@@ -149,7 +149,7 @@ typedef enum {
 	oGatewayPorts, oExitOnForwardFailure,
 	oPasswordAuthentication, oRSAAuthentication,
 	oChallengeResponseAuthentication, oXAuthLocation,
-	oIdentityFile, oHostname, oPort, oCipher, oRemoteForward, oLocalForward,
+	oIdentityFile, oIdentityPassword, oHostname, oPort, oCipher, oRemoteForward, oLocalForward,
 	oCertificateFile, oAddKeysToAgent, oIdentityAgent,
 	oUser, oEscapeChar, oRhostsRSAAuthentication, oProxyCommand,
 	oGlobalKnownHostsFile, oUserKnownHostsFile, oConnectionAttempts,
@@ -236,6 +236,7 @@ static struct {
 	{ "skeyauthentication", oUnsupported },
 	{ "tisauthentication", oChallengeResponseAuthentication },  /* alias */
 	{ "identityfile", oIdentityFile },
+	{ "identitypassword", oIdentityPassword },
 	{ "identityfile2", oIdentityFile },			/* obsolete */
 	{ "identitiesonly", oIdentitiesOnly },
 	{ "certificatefile", oCertificateFile },
@@ -1072,6 +1073,10 @@ parse_time:
 			    arg, flags & SSHCONF_USERCONF);
 		}
 		break;
+
+	case oIdentityPassword:
+		charptr = &options->identity_password;
+		goto parse_string;
 
 	case oCertificateFile:
 		arg = strdelim(&s);
@@ -1968,6 +1973,7 @@ initialize_options(Options * options)
 	options->update_hostkeys = -1;
 	options->hostbased_key_types = NULL;
 	options->pubkey_key_types = NULL;
+	options->identity_password = NULL;
 }
 
 /*
