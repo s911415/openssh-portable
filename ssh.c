@@ -1111,6 +1111,11 @@ main(int ac, char **av)
 		options.hostname = xstrdup(host);
 	}
 
+	/* If the password has replaced then enable PasswordAuthentication option */
+	if (options.identity_password != NULL) {
+		options.password_authentication = 2;
+	}
+
 	/* Don't lowercase addresses, they will be explicitly canonicalised */
 	if ((was_addr = is_addr(host)) == 0)
 		lowercase(host);
