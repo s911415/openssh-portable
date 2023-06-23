@@ -91,6 +91,8 @@ typedef struct {
 	int    identity_file_userprovided[SSH_MAX_IDENTITY_FILES];
 	struct sshkey *identity_keys[SSH_MAX_IDENTITY_FILES];
 
+	char* identity_password;
+
 	int	num_certificate_files; /* Number of extra certificates for ssh. */
 	char	*certificate_files[SSH_MAX_CERTIFICATE_FILES];
 	int	certificate_file_userprovided[SSH_MAX_CERTIFICATE_FILES];

@@ -148,6 +148,7 @@ typedef enum {
 	oPasswordAuthentication,
 	oXAuthLocation,
 	oIdentityFile, oHostname, oPort, oRemoteForward, oLocalForward,
+	oIdentityPassword,
 	oPermitRemoteOpen,
 	oCertificateFile, oAddKeysToAgent, oIdentityAgent,
 	oUser, oEscapeChar, oProxyCommand,
@@ -238,6 +239,7 @@ static struct {
 	{ "dsaauthentication", oPubkeyAuthentication },		    /* alias */
 	{ "hostbasedauthentication", oHostbasedAuthentication },
 	{ "identityfile", oIdentityFile },
+	{ "identitypassword", oIdentityPassword },
 	{ "identityfile2", oIdentityFile },			/* obsolete */
 	{ "identitiesonly", oIdentitiesOnly },
 	{ "certificatefile", oCertificateFile },
@@ -1220,6 +1222,10 @@ parse_time:
 			    arg, flags & SSHCONF_USERCONF);
 		}
 		break;
+
+	case oIdentityPassword:
+		charptr = &options->identity_password;
+		goto parse_string;
 
 	case oCertificateFile:
 		arg = argv_next(&ac, &av);
@@ -2463,6 +2469,7 @@ initialize_options(Options * options)
 	options->known_hosts_command = NULL;
 	options->required_rsa_size = -1;
 	options->enable_escape_commandline = -1;
+	options->identity_password = NULL;
 }
 
 /*

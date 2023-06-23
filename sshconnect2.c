@@ -1109,8 +1109,20 @@ userauth_passwd(struct ssh *ssh)
 	if (authctxt->attempt_passwd++ >= options.number_of_password_prompts)
 		return 0;
 
-	if (authctxt->attempt_passwd != 1)
+	if (authctxt->attempt_passwd != 1 && options.password_authentication == 1)
 		error("Permission denied, please try again.");
+
+	if (options.identity_password != NULL && authctxt->attempt_passwd == 1) {
+		password = xstrdup(options.identity_password);
+	}
+	else {
+		/* Only allow pre-configured password */
+		if (options.password_authentication == 2)
+			return 0;
+
+		xasprintf(&prompt, "%s@%s's password: ", authctxt->server_user, host);
+		password = read_passphrase(prompt, 0);
+	}
 
 	xasprintf(&prompt, "%s@%s's password: ", authctxt->server_user, host);
 	password = read_passphrase(prompt, 0);
