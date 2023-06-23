@@ -164,7 +164,7 @@ static char *hostbased_cuser = NULL;
 static char *hostbased_chost = NULL;
 static char *auth_method = "unknown";
 static char *auth_submethod = NULL;
-static u_int session_id2_len = 0;
+static size_t session_id2_len = 0;
 static u_char *session_id2 = NULL;
 static pid_t monitor_child_pid;
 
