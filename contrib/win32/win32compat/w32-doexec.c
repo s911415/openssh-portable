@@ -256,7 +256,7 @@ setup_session_env(struct ssh *ssh, Session* s)
 	SetEnvironmentVariableW(L"USERNAME", tmp);
 
 	if (!s->is_subsystem) {
-		_snprintf(buf, ARRAYSIZE(buf), "%s@%s", s->pw->pw_name, getenv("COMPUTERNAME"));
+		_snprintf(buf, ARRAYSIZE(buf), "\x1b[32m%s@%s\x1b[0m", s->pw->pw_name, getenv("COMPUTERNAME"));
 		UTF8_TO_UTF16_WITH_CLEANUP(tmp, buf);
 		/* escape $ characters as $$ to distinguish from special prompt characters */
 		for (size_t i = 0, j = 0; i < wcslen(tmp) && j < ARRAYSIZE(wbuf) - 1; i++) {
@@ -264,7 +264,7 @@ setup_session_env(struct ssh *ssh, Session* s)
 			if (wbuf[j++] == L'$')
 				wbuf[j++] = L'$';
 		}
-		wcscat_s(wbuf, ARRAYSIZE(wbuf), L" $P$G");
+		wcscat_s(wbuf, ARRAYSIZE(wbuf), L" \x1b[33m$P\x1b[0m\r\n$G ");
 		SetEnvironmentVariableW(L"PROMPT", wbuf);
 	}
 
