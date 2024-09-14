@@ -1,4 +1,4 @@
-/* $OpenBSD: servconf.c,v 1.402 2023/09/08 06:34:24 djm Exp $ */
+/* $OpenBSD: servconf.c,v 1.405 2024/03/04 02:16:11 djm Exp $ */
 /*
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
  *                    All rights reserved
@@ -11,6 +11,10 @@
  */
 
 #include "includes.h"
+#ifdef WINDOWS
+#include <LM.h>
+#include <Sddl.h>
+#endif // WINDOWS
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -959,39 +963,6 @@ process_permitopen(struct ssh *ssh, ServerOptions *options)
 	    options->num_permitted_listens);
 }
 
-/* Parse a ChannelTimeout clause "pattern=interval" */
-static int
-parse_timeout(const char *s, char **typep, int *secsp)
-{
-	char *cp, *sdup;
-	int secs;
-
-	if (typep != NULL)
-		*typep = NULL;
-	if (secsp != NULL)
-		*secsp = 0;
-	if (s == NULL)
-		return -1;
-	sdup = xstrdup(s);
-
-	if ((cp = strchr(sdup, '=')) == NULL || cp == sdup) {
-		free(sdup);
-		return -1;
-	}
-	*cp++ = '\0';
-	if ((secs = convtime(cp)) < 0) {
-		free(sdup);
-		return -1;
-	}
-	/* success */
-	if (typep != NULL)
-		*typep = xstrdup(sdup);
-	if (secsp != NULL)
-		*secsp = secs;
-	free(sdup);
-	return 0;
-}
-
 void
 process_channel_timeouts(struct ssh *ssh, ServerOptions *options)
 {
@@ -1002,7 +973,7 @@ process_channel_timeouts(struct ssh *ssh, ServerOptions *options)
 	debug3_f("setting %u timeouts", options->num_channel_timeouts);
 	channel_clear_timeouts(ssh);
 	for (i = 0; i < options->num_channel_timeouts; i++) {
-		if (parse_timeout(options->channel_timeouts[i],
+		if (parse_pattern_interval(options->channel_timeouts[i],
 		    &type, &secs) != 0) {
 			fatal_f("internal error: bad timeout %s",
 			    options->channel_timeouts[i]);
@@ -1335,12 +1306,12 @@ process_server_config_line_depth(ServerOptions *options, char *line,
     struct include_list *includes)
 {
 	char *str, ***chararrayptr, **charptr, *arg, *arg2, *p, *keyword;
-	int cmdline = 0, *intptr, value, value2, n, port, oactive, r, found;
-	int ca_only = 0;
+	int cmdline = 0, *intptr, value, value2, n, port, oactive, r;
+	int ca_only = 0, found = 0;
 	SyslogFacility *log_facility_ptr;
 	LogLevel *log_level_ptr;
 	ServerOpCodes opcode;
-	u_int i, *uintptr, uvalue, flags = 0;
+	u_int i, *uintptr, flags = 0;
 	size_t len;
 	long long val64;
 	const struct multistate *multistate_ptr;
@@ -1350,6 +1321,8 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 	char **oav = NULL, **av;
 	int oac = 0, ac;
 	int ret = -1;
+	char **strs = NULL; /* string array arguments; freed implicitly */
+	u_int nstrs = 0;
 
 	/* Strip trailing whitespace. Allow \f (form feed) at EOL only */
 	if ((len = strlen(line)) == 0)
@@ -1812,7 +1785,6 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 
 	case sLogVerbose:
 		found = options->num_log_verbose == 0;
-		i = 0;
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (*arg == '\0') {
 				error("%s line %d: keyword %s empty argument",
@@ -1821,19 +1793,25 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 			}
 			/* Allow "none" only in first position */
 			if (strcasecmp(arg, "none") == 0) {
-				if (i > 0 || ac > 0) {
+				if (nstrs > 0 || ac > 0) {
 					error("%s line %d: keyword %s \"none\" "
 					    "argument must appear alone.",
 					    filename, linenum, keyword);
 					goto out;
 				}
 			}
-			i++;
-			if (!found || !*activep)
-				continue;
 			opt_array_append(filename, linenum, keyword,
-			    &options->log_verbose, &options->num_log_verbose,
-			    arg);
+			    &strs, &nstrs, arg);
+		}
+		if (nstrs == 0) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			options->log_verbose = strs;
+			options->num_log_verbose = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -1859,15 +1837,55 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 		chararrayptr = &options->allow_users;
 		uintptr = &options->num_allow_users;
  parse_allowdenyusers:
+		/* XXX appends to list; doesn't respect first-match-wins */
 		while ((arg = argv_next(&ac, &av)) != NULL) {
+#ifdef WINDOWS
+			// it can be a SID string; if it is - use localized name for that SID
+			PSID Sid = NULL;
+			char* utf8_user_name = NULL;
+			wchar_t* arg_utf16 = utf8_to_utf16(arg);
+			if (ConvertStringSidToSidW(arg_utf16, &Sid) != 0) {
+				WCHAR user_name[UNLEN + 1];
+				DWORD user_name_length = UNLEN + 1;
+				WCHAR domain_name[DNLEN + 1] = L"";
+				DWORD domain_name_size = DNLEN + 1;
+				SID_NAME_USE account_type = 0;
+				if (LookupAccountSidW(NULL, Sid, user_name, &user_name_length,
+					domain_name, &domain_name_size, &account_type) != 0) {
+					utf8_user_name = utf16_to_utf8(user_name);
+					debug3_f("'%s' is translated to '%s'", arg, utf8_user_name);
+					arg = utf8_user_name;
+				} else {
+					debug3_f("LookupAccountSid failed for '%s'", arg);
+				}
+
+				if (Sid)
+					LocalFree(Sid);
+			}
+			else
+			{
+				debug3_f("'%s' not recognized as SID", arg);
+			}
+#endif // WINDOWS
 			if (*arg == '\0' ||
 			    match_user(NULL, NULL, NULL, arg) == -1)
 				fatal("%s line %d: invalid %s pattern: \"%s\"",
 				    filename, linenum, keyword, arg);
+			found = 1;
 			if (!*activep)
 				continue;
 			opt_array_append(filename, linenum, keyword,
 			    chararrayptr, uintptr, arg);
+#ifdef WINDOWS
+			if (utf8_user_name)
+				free(utf8_user_name);
+			if (arg_utf16)
+				free(arg_utf16);
+#endif // WINDOWS
+		}
+		if (!found) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
 		}
 		break;
 
@@ -1879,15 +1897,55 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 	case sAllowGroups:
 		chararrayptr = &options->allow_groups;
 		uintptr = &options->num_allow_groups;
+		/* XXX appends to list; doesn't respect first-match-wins */
  parse_allowdenygroups:
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (*arg == '\0')
 				fatal("%s line %d: empty %s pattern",
 				    filename, linenum, keyword);
+			found = 1;
+#ifdef WINDOWS
+			// it can be a SID string; if it is - use localized name for that SID
+			PSID Sid = NULL;
+			char* utf8_group_name = NULL;
+			wchar_t* arg_utf16 = utf8_to_utf16(arg);
+			if (ConvertStringSidToSidW(arg_utf16, &Sid) != 0) {
+				WCHAR group_name[UNLEN + 1];
+				DWORD group_name_length = UNLEN + 1;
+				WCHAR domain_name[DNLEN + 1] = L"";
+				DWORD domain_name_size = DNLEN + 1;
+				SID_NAME_USE account_type = 0;
+				if (LookupAccountSidW(NULL, Sid, group_name, &group_name_length,
+					domain_name, &domain_name_size, &account_type) != 0) {
+					utf8_group_name = utf16_to_utf8(group_name);
+					debug3_f("'%s' is translated to '%s'", arg, utf8_group_name);
+					arg = utf8_group_name;
+				} else {
+					debug3_f("LookupAccountSid failed for '%s'", arg);
+				}
+
+				if (Sid)
+					LocalFree(Sid);
+			}
+			else
+			{
+				debug3_f("'%s' not recognized as SID", arg);
+			}
+#endif // WINDOWS
 			if (!*activep)
 				continue;
 			opt_array_append(filename, linenum, keyword,
 			    chararrayptr, uintptr, arg);
+#ifdef WINDOWS
+			if (utf8_group_name)
+				free(utf8_group_name);
+			if (arg_utf16)
+				free(arg_utf16);
+#endif // WINDOWS
+		}
+		if (!found) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
 		}
 		break;
 
@@ -1982,7 +2040,7 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 		arg = argv_assemble(1, &arg); /* quote command correctly */
 		arg2 = argv_assemble(ac, av); /* rest of command */
 		xasprintf(&options->subsystem_args[options->num_subsystems],
-		    "%s %s", arg, arg2);
+		    "%s%s%s", arg, *arg2 == '\0' ? "" : " ", arg2);
 		free(arg2);
 		argv_consume(&ac);
 		options->num_subsystems++;
@@ -2072,7 +2130,7 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 	 * AuthorizedKeysFile	/etc/ssh_keys/%u
 	 */
 	case sAuthorizedKeysFile:
-		uvalue = options->num_authkeys_files;
+		found = options->num_authkeys_files == 0;
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (*arg == '\0') {
 				error("%s line %d: keyword %s empty argument",
@@ -2080,12 +2138,19 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 				goto out;
 			}
 			arg2 = tilde_expand_filename(arg, getuid());
-			if (*activep && uvalue == 0) {
-				opt_array_append(filename, linenum, keyword,
-				    &options->authorized_keys_files,
-				    &options->num_authkeys_files, arg2);
-			}
+			opt_array_append(filename, linenum, keyword,
+			    &strs, &nstrs, arg2);
 			free(arg2);
+		}
+		if (nstrs == 0) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			options->authorized_keys_files = strs;
+			options->num_authkeys_files = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -2112,34 +2177,47 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 		goto parse_int;
 
 	case sAcceptEnv:
+		/* XXX appends to list; doesn't respect first-match-wins */
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (*arg == '\0' || strchr(arg, '=') != NULL)
 				fatal("%s line %d: Invalid environment name.",
 				    filename, linenum);
+			found = 1;
 			if (!*activep)
 				continue;
 			opt_array_append(filename, linenum, keyword,
 			    &options->accept_env, &options->num_accept_env,
 			    arg);
 		}
+		if (!found) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
+		}
 		break;
 
 	case sSetEnv:
-		uvalue = options->num_setenv;
+		found = options->num_setenv == 0;
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (*arg == '\0' || strchr(arg, '=') == NULL)
 				fatal("%s line %d: Invalid environment.",
 				    filename, linenum);
-			if (!*activep || uvalue != 0)
-				continue;
-			if (lookup_setenv_in_list(arg, options->setenv,
-			    options->num_setenv) != NULL) {
+			if (lookup_setenv_in_list(arg, strs, nstrs) != NULL) {
 				debug2("%s line %d: ignoring duplicate env "
 				    "name \"%.64s\"", filename, linenum, arg);
 				continue;
 			}
 			opt_array_append(filename, linenum, keyword,
-			    &options->setenv, &options->num_setenv, arg);
+			    &strs, &nstrs, arg);
+		}
+		if (nstrs == 0) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			options->setenv = strs;
+			options->num_setenv = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -2293,21 +2371,20 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 			uintptr = &options->num_permitted_opens;
 			chararrayptr = &options->permitted_opens;
 		}
-		arg = argv_next(&ac, &av);
-		if (!arg || *arg == '\0')
-			fatal("%s line %d: %s missing argument.",
-			    filename, linenum, keyword);
-		uvalue = *uintptr;	/* modified later */
-		if (strcmp(arg, "any") == 0 || strcmp(arg, "none") == 0) {
-			if (*activep && uvalue == 0) {
-				*uintptr = 1;
-				*chararrayptr = xcalloc(1,
-				    sizeof(**chararrayptr));
-				(*chararrayptr)[0] = xstrdup(arg);
+		found = *uintptr == 0;
+		while ((arg = argv_next(&ac, &av)) != NULL) {
+			if (strcmp(arg, "any") == 0 ||
+			    strcmp(arg, "none") == 0) {
+				if (nstrs != 0) {
+					fatal("%s line %d: %s must appear "
+					    "alone on a %s line.",
+					    filename, linenum, arg, keyword);
+				}
+				opt_array_append(filename, linenum, keyword,
+				    &strs, &nstrs, arg);
+				continue;
 			}
-			break;
-		}
-		for (; arg != NULL && *arg != '\0'; arg = argv_next(&ac, &av)) {
+
 			if (opcode == sPermitListen &&
 			    strchr(arg, ':') == NULL) {
 				/*
@@ -2329,11 +2406,19 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 				fatal("%s line %d: %s bad port number",
 				    filename, linenum, keyword);
 			}
-			if (*activep && uvalue == 0) {
-				opt_array_append(filename, linenum, keyword,
-				    chararrayptr, uintptr, arg2);
-			}
+			opt_array_append(filename, linenum, keyword,
+			    &strs, &nstrs, arg2);
 			free(arg2);
+		}
+		if (nstrs == 0) {
+			fatal("%s line %d: %s missing argument.",
+			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			*chararrayptr = strs;
+			*uintptr = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -2463,10 +2548,9 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 	case sAuthenticationMethods:
 		found = options->num_auth_methods == 0;
 		value = 0; /* seen "any" pseudo-method */
-		value2 = 0; /* successfully parsed any method */
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			if (strcmp(arg, "any") == 0) {
-				if (options->num_auth_methods > 0) {
+				if (nstrs > 0) {
 					fatal("%s line %d: \"any\" must "
 					    "appear alone in %s",
 					    filename, linenum, keyword);
@@ -2479,16 +2563,18 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 				fatal("%s line %d: invalid %s method list.",
 				    filename, linenum, keyword);
 			}
-			value2 = 1;
-			if (!found || !*activep)
-				continue;
 			opt_array_append(filename, linenum, keyword,
-			    &options->auth_methods,
-			    &options->num_auth_methods, arg);
+			    &strs, &nstrs, arg);
 		}
-		if (value2 == 0) {
+		if (nstrs == 0) {
 			fatal("%s line %d: no %s specified",
 			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			options->auth_methods = strs;
+			options->num_auth_methods = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -2549,26 +2635,33 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 		goto parse_int;
 
 	case sChannelTimeout:
-		uvalue = options->num_channel_timeouts;
-		i = 0;
+		found = options->num_channel_timeouts == 0;
 		while ((arg = argv_next(&ac, &av)) != NULL) {
 			/* Allow "none" only in first position */
 			if (strcasecmp(arg, "none") == 0) {
-				if (i > 0 || ac > 0) {
+				if (nstrs > 0 || ac > 0) {
 					error("%s line %d: keyword %s \"none\" "
 					    "argument must appear alone.",
 					    filename, linenum, keyword);
 					goto out;
 				}
-			} else if (parse_timeout(arg, NULL, NULL) != 0) {
+			} else if (parse_pattern_interval(arg,
+			    NULL, NULL) != 0) {
 				fatal("%s line %d: invalid channel timeout %s",
 				    filename, linenum, arg);
 			}
-			if (!*activep || uvalue != 0)
-				continue;
 			opt_array_append(filename, linenum, keyword,
-			    &options->channel_timeouts,
-			    &options->num_channel_timeouts, arg);
+			    &strs, &nstrs, arg);
+		}
+		if (nstrs == 0) {
+			fatal("%s line %d: no %s specified",
+			    filename, linenum, keyword);
+		}
+		if (found && *activep) {
+			options->channel_timeouts = strs;
+			options->num_channel_timeouts = nstrs;
+			strs = NULL; /* transferred */
+			nstrs = 0;
 		}
 		break;
 
@@ -2608,6 +2701,7 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 	/* success */
 	ret = 0;
  out:
+	opt_array_free2(strs, NULL, nstrs);
 	argv_free(oav, oac);
 	return ret;
 }

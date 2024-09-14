@@ -1,4 +1,4 @@
-/* $OpenBSD: packet.c,v 1.312 2023/08/28 03:31:16 djm Exp $ */
+/* $OpenBSD: packet.c,v 1.313 2023/12/18 14:45:17 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -1207,8 +1207,13 @@ ssh_packet_send2_wrapped(struct ssh *ssh)
 	sshbuf_dump(state->output, stderr);
 #endif
 	/* increment sequence number for outgoing packets */
-	if (++state->p_send.seqnr == 0)
+	if (++state->p_send.seqnr == 0) {
+		if ((ssh->kex->flags & KEX_INITIAL) != 0) {
+			ssh_packet_disconnect(ssh, "outgoing sequence number "
+			    "wrapped during initial key exchange");
+		}
 		logit("outgoing seqnr wraps around");
+	}
 	if (++state->p_send.packets == 0)
 		if (!(ssh->compat & SSH_BUG_NOREKEY))
 			return SSH_ERR_NEED_REKEY;
@@ -1613,11 +1618,15 @@ ssh_packet_read_poll2(struct ssh *ssh, u_char *typep, u_int32_t *seqnr_p)
 		if ((r = sshbuf_consume(state->input, mac->mac_len)) != 0)
 			goto out;
 	}
-	
 	if (seqnr_p != NULL)
 		*seqnr_p = state->p_read.seqnr;
-	if (++state->p_read.seqnr == 0)
+	if (++state->p_read.seqnr == 0) {
+		if ((ssh->kex->flags & KEX_INITIAL) != 0) {
+			ssh_packet_disconnect(ssh, "incoming sequence number "
+			    "wrapped during initial key exchange");
+		}
 		logit("incoming seqnr wraps around");
+	}
 	if (++state->p_read.packets == 0)
 		if (!(ssh->compat & SSH_BUG_NOREKEY))
 			return SSH_ERR_NEED_REKEY;
@@ -1718,7 +1727,7 @@ ssh_packet_read_poll_seqnr(struct ssh *ssh, u_char *typep, u_int32_t *seqnr_p)
 
 		/* Always process disconnect messages */
 		if (*typep == SSH2_MSG_DISCONNECT) {
-		    if ((r = sshpkt_get_u32(ssh, &reason)) != 0 ||
+			if ((r = sshpkt_get_u32(ssh, &reason)) != 0 ||
 			    (r = sshpkt_get_string(ssh, &msg, NULL)) != 0)
 				return r;
 			/* Ignore normal client exit notifications */
