@@ -1,0 +1,30 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO Yubico/libfido2
+    REF ${VERSION}
+    SHA512 46ef14d9215d13608eb511ea4d63494758eb2464e75a00411e1afa2546f06e4cd142a08a59f1ee78967c962290c54889014f58608d4b58d48ba590e5805d3b04
+    HEAD_REF master
+    PATCHES
+        "fix_cmakelists.patch"
+        "modify_output_name.patch"
+)
+
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" LIBFIDO2_BUILD_STATIC)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" LIBFIDO2_BUILD_SHARED)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DBUILD_EXAMPLES=OFF
+        -DBUILD_MANPAGES=OFF
+        -DBUILD_STATIC_LIBS=${LIBFIDO2_BUILD_STATIC}
+        -DBUILD_SHARED_LIBS=${LIBFIDO2_BUILD_SHARED}
+        -DBUILD_TOOLS=OFF
+ )
+
+vcpkg_cmake_install()
+vcpkg_copy_pdbs()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

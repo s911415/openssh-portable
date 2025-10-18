@@ -11,6 +11,13 @@ struct timeval
     long         tv_usec;
 };
 
+struct itimerval {
+	struct timeval it_interval; /* Timer interval */
+	struct timeval it_value;    /* Current value */
+};
+
+#define ITIMER_REAL 0
+
 int usleep(unsigned int);
 int gettimeofday(struct timeval *, void *);
 int nanosleep(const struct timespec *, struct timespec *);

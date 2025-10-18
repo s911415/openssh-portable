@@ -55,9 +55,9 @@ void ssh_libcrypto_init(void);
 # endif
 #endif
 
-#ifdef OPENSSL_IS_BORINGSSL
+#if defined(OPENSSL_IS_BORINGSSL) || defined(OPENSSL_IS_AWSLC)
 /*
- * BoringSSL (rightly) got rid of the BN_FLG_CONSTTIME flag, along with
+ * BoringSSL and AWS-LC (rightly) got rid of the BN_FLG_CONSTTIME flag, along with
  * the entire BN_set_flags() interface.
  * https://boringssl.googlesource.com/boringssl/+/0a211dfe9
  */
@@ -77,6 +77,16 @@ int EVP_CIPHER_CTX_get_iv(const EVP_CIPHER_CTX *ctx,
 int EVP_CIPHER_CTX_set_iv(EVP_CIPHER_CTX *ctx,
     const unsigned char *iv, size_t len);
 #endif /* HAVE_EVP_CIPHER_CTX_SET_IV */
+
+#ifndef HAVE_EVP_DIGESTSIGN
+int EVP_DigestSign(EVP_MD_CTX *, unsigned char *, size_t *,
+    const unsigned char *, size_t);
+#endif
+
+#ifndef HAVE_EVP_DIGESTVERIFY
+int EVP_DigestVerify(EVP_MD_CTX *, const unsigned char *, size_t,
+    const unsigned char *, size_t);
+#endif
 
 #endif /* WITH_OPENSSL */
 #endif /* _OPENSSL_COMPAT_H */

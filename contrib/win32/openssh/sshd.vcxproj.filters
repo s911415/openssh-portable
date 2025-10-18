@@ -51,9 +51,6 @@
     <ClCompile Include="$(OpenSSH-Src-Path)sandbox-seccomp-filter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenSSH-Src-Path)sandbox-systrace.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="$(OpenSSH-Src-Path)servconf.c">
       <Filter>Source Files</Filter>
     </ClCompile>

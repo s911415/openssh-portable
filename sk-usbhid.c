@@ -1,4 +1,4 @@
-/* $OpenBSD: sk-usbhid.c,v 1.46 2023/03/28 06:12:38 dtucker Exp $ */
+/* $OpenBSD: sk-usbhid.c,v 1.47 2024/12/03 08:31:49 djm Exp $ */
 /*
  * Copyright (c) 2019 Markus Friedl
  * Copyright (c) 2020 Pedro Martelletto
@@ -77,10 +77,11 @@
 #define FIDO_CRED_PROT_UV_OPTIONAL_WITH_ID 0
 #endif
 
+# include "misc.h"
+
 #ifndef SK_STANDALONE
 # include "log.h"
 # include "xmalloc.h"
-# include "misc.h"
 /*
  * If building as part of OpenSSH, then rename exported functions.
  * This must be done before including sk-api.h.
@@ -774,9 +775,6 @@ static int
 key_lookup(fido_dev_t *dev, const char *application, const uint8_t *user_id,
     size_t user_id_len, const char *pin)
 {
-#ifdef HAVE_FIDO_DEV_IS_WINHELLO
-	return FIDO_OK;
-#else
 	fido_assert_t* assert = NULL;
 	uint8_t message[32];
 	int r = FIDO_ERR_INTERNAL;
@@ -830,7 +828,6 @@ out:
 	fido_assert_free(&assert);
 
 	return r;
-#endif  /* HAVE_FIDO_DEV_IS_WINHELLO */
 }
 
 int
@@ -897,6 +894,9 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
 		goto out;
 	}
 	skdebug(__func__, "using device %s", sk->path);
+	// Windows: can skip key_lookup() as it will not be overwritten regardless, per above comment:
+	// Don't overwrite existing credentials on FIDO authenticators.
+#ifndef WINDOWS
 	if ((flags & SSH_SK_RESIDENT_KEY) != 0 &&
 	    (flags & SSH_SK_FORCE_OPERATION) == 0 &&
 	    (r = key_lookup(sk->dev, application, user_id, sizeof(user_id),
@@ -910,6 +910,7 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
 		}
 		goto out;
 	}
+#endif /* !WINDOWS */
 	if ((cred = fido_cred_new()) == NULL) {
 		skdebug(__func__, "fido_cred_new failed");
 		goto out;
@@ -990,13 +991,15 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
 			    fido_strerr(r));
 			goto out;
 		}
-	} else {
+	} else if (strcmp(fido_cred_fmt(cred), "none") != 0) {
 		skdebug(__func__, "self-attested credential");
 		if ((r = fido_cred_verify_self(cred)) != FIDO_OK) {
 			skdebug(__func__, "fido_cred_verify_self: %s",
 			    fido_strerr(r));
 			goto out;
 		}
+	} else {
+		skdebug(__func__, "no attestation data");
 	}
 	if ((response = calloc(1, sizeof(*response))) == NULL) {
 		skdebug(__func__, "calloc response failed");

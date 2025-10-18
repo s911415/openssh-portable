@@ -57,7 +57,6 @@
     <ClCompile Include="$(OpenSSH-Src-Path)platform-pledge.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)platform-tracing.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)platform.c" />
-    <ClCompile Include="$(OpenSSH-Src-Path)sandbox-pledge.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)contrib\win32\win32compat\ttymodes_windows.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)contrib\win32\win32compat\w32-sshfileperm.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)digest-openssl.c" />
@@ -81,6 +80,7 @@
     <ClCompile Include="..\win32compat\spawn-ext.c" />
     <ClCompile Include="..\..\..\cipher-chachapoly-libcrypto.c" />
     <ClCompile Include="..\..\..\kex-names.c" />
+    <ClCompile Include="..\..\..\kexmlkem768x25519.c" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="$(OpenSSH-Src-Path)addrmatch.c">
@@ -146,12 +146,6 @@
     <ClCompile Include="$(OpenSSH-Src-Path)fatal.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenSSH-Src-Path)fe25519.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="$(OpenSSH-Src-Path)ge25519.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="$(OpenSSH-Src-Path)gss-genr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -204,9 +198,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenSSH-Src-Path)poly1305.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="$(OpenSSH-Src-Path)sc25519.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenSSH-Src-Path)smult_curve25519_ref.c">

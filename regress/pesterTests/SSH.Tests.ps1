@@ -77,22 +77,6 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         $dfltShellCmdOptionRegKeyName = "DefaultShellCommandOption"
         Remove-ItemProperty -Path $dfltShellRegPath -Name $dfltShellRegKeyName -ErrorAction SilentlyContinue
         Remove-ItemProperty -Path $dfltShellRegPath -Name $dfltShellCmdOptionRegKeyName -ErrorAction SilentlyContinue
-
-        function ConfigureDefaultShell {
-            param
-            (
-                  [string] $default_shell_path,
-                  [string] $default_shell_cmd_option_val = $null
-            )
-
-            if (!(Test-Path $dfltShellRegPath)) {
-                New-Item -Path $dfltShellRegPath -Force | Out-Null
-            }
-            New-ItemProperty -Path $dfltShellRegPath -Name $dfltShellRegKeyName -Value $default_shell_path -PropertyType String -Force
-            if ($default_shell_cmd_option_val -ne $null) {
-                New-ItemProperty -Path $dfltShellRegPath -Name $dfltShellCmdOptionRegKeyName -Value $default_shell_cmd_option_val -PropertyType String -Force
-            }
-        }
     }
 
     BeforeEach {
@@ -243,6 +227,13 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             $LASTEXITCODE | Should Be 0
             $o | Should Be `$env:computername
         }
+        It "$tC.$tI - exiting ssh session exits sshd session child processes" -skip:$skip {
+            $sshdPidCountBefore = (Get-Process -Name sshd* | Select-Object -ExpandProperty Id).Count
+            ssh test_target "echo '`$env:computername'"
+            Start-Sleep -Seconds 2
+            $sshdPidCountAfter = (Get-Process -Name sshd* | Select-Object -ExpandProperty Id).Count
+            $sshdPidCountAfter | Should Be $sshdPidCountBefore
+        }
     }
 
     Context "$tC - configure powershell as default shell with admin user" {
@@ -265,7 +256,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         It "$tC.$tI - admin session can write to console" -skip:$skip {
             $adminusername = $OpenSSHTestInfo['AdminUser']
             $o = ssh $adminusername@test_target "Get-ComputerInfo"
-            $LASTEXITCODE | Should Be 0 
+            $LASTEXITCODE | Should Be 0
             $o | Select-String -Pattern "WindowsVersion" | Should Match "WindowsVersion"
         }
     }
@@ -404,6 +395,12 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         It "$tC.$tI - ProxyCommand with absolute path to the file" {
             iex "cmd /c `"ssh -o ProxyCommand=`"`"$($env:ComSpec) /c echo test string for invalid proxy 1>&2`"`" abc 2>$stderrFile`""
             $stderrFile | Should Contain "test string for invalid proxy"
+        }
+
+        It "$tC.$tI - disable pseudo-terminal allocation (-T)" {
+            $o = ssh -T test_target echo 1234
+            $LASTEXITCODE | Should Be 0
+            $o | Should Be "1234"
         }
     }
 }

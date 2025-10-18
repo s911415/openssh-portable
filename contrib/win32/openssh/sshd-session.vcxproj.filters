@@ -108,9 +108,6 @@
     <ClCompile Include="$(OpenSSH-Src-Path)sandbox-seccomp-filter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenSSH-Src-Path)sandbox-systrace.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="$(OpenSSH-Src-Path)servconf.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -160,6 +157,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\win32compat\wmain_sshd-session.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\platform-listen.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

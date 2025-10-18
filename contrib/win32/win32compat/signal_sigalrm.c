@@ -29,6 +29,7 @@
 */
 
 #include "signal_internal.h"
+#include "inc\sys\time.h"
 #include "inc\signal.h"
 #include "debug.h"
 
@@ -44,7 +45,7 @@ sigalrm_APC(_In_opt_ LPVOID lpArgToCompletionRoutine,
 }
 
 unsigned int
-w32_alarm(unsigned int sec)
+w32_alarm(long long sec)
 {
 	LARGE_INTEGER due;
 	ULONGLONG sec_passed;
@@ -64,8 +65,8 @@ w32_alarm(unsigned int sec)
 	due.QuadPart *= sec;
 	/* this call resets the timer if it is already active */
 	if (!SetWaitableTimer(timer_info.timer, &due, 0, sigalrm_APC, NULL, FALSE)) {
-		debug3("alram() - ERROR SetWaitableTimer() %d", GetLastError());
-		return 0;;
+		debug3("alarm() - ERROR SetWaitableTimer() %d", GetLastError());
+		return 0;
 	}
 
 	/* if timer was already ative, return when it was due */
@@ -78,6 +79,23 @@ w32_alarm(unsigned int sec)
 	timer_info.run_time_sec = sec;
 	
 	return ret;
+}
+
+int w32_setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value)
+{
+	if (which != ITIMER_REAL) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (old_value != NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (new_value->it_value.tv_sec == 0 && new_value->it_value.tv_usec == 0) {
+		w32_alarm(0);
+		return 0;
+	}
+	return w32_alarm(new_value->it_value.tv_sec);
 }
 
 int

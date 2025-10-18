@@ -32,6 +32,7 @@ struct _timer_info {
 	ULONGLONG ticks_at_start; /* 0 if timer is not live */
 	__int64 run_time_sec; /* time in seconds, timer is set to go off from ticks_at_start */
 };
+
 int sw_init_timer();
 
 #define MAXIMUM_WAIT_OBJECTS_ENHANCED 1024

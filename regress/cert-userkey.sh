@@ -1,10 +1,10 @@
-#	$OpenBSD: cert-userkey.sh,v 1.28 2021/09/30 05:26:26 dtucker Exp $
+#	$OpenBSD: cert-userkey.sh,v 1.29 2024/12/06 16:25:58 djm Exp $
 #	Placed in the Public Domain.
 
 tid="certified user keys"
 
-rm -f $OBJ/authorized_keys_$USER $OBJ/user_ca_key* $OBJ/cert_user_key*
-cp $OBJ/sshd_proxy $OBJ/sshd_proxy_bak
+rm -f $OBJ/authorized_keys_${USER}* $OBJ/user_ca_key* $OBJ/cert_user_key*
+rm -f $OBJ/authorized_principals*
 cp $OBJ/ssh_proxy $OBJ/ssh_proxy_bak
 if [ "$os" == "windows" ]; then
 	# remove CR (carriage return)
@@ -13,6 +13,10 @@ else
 	PLAIN_TYPES=`$SSH -Q key-plain | maybe_filter_sk | sed 's/^ssh-dss/ssh-dsa/;s/^ssh-//'`
 fi
 
+grep -v AuthorizedKeysFile $OBJ/sshd_proxy > $OBJ/sshd_proxy_bak
+echo "AuthorizedKeysFile $OBJ/authorized_keys_%u_*" >> $OBJ/sshd_proxy_bak
+
+PLAIN_TYPES=`$SSH -Q key-plain | maybe_filter_sk | sed 's/^ssh-dss/ssh-dsa/;s/^ssh-//'`
 EXTRA_TYPES=""
 rsa=""
 
@@ -68,11 +72,15 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	_prefix="${ktype}"
 
 	# Setup for AuthorizedPrincipalsFile
-	rm -f $OBJ/authorized_keys_$USER
+	rm -f $OBJ/authorized_keys_${USER}* $OBJ/authorized_principals_${USER}*
+	touch $OBJ/authorized_keys_${USER}_A
+	touch $OBJ/authorized_keys_${USER}_Z
+	touch $OBJ/authorized_principals_${USER}_A
+	touch $OBJ/authorized_principals_${USER}_Z
 	(
 		cat $OBJ/sshd_proxy_bak
 		echo "AuthorizedPrincipalsFile " \
-		    "$OBJ/authorized_principals_%u"
+		    "$OBJ/authorized_principals_%u_*"
 		echo "TrustedUserCAKeys $OBJ/user_ca_key.pub"
 		echo "PubkeyAcceptedAlgorithms ${t}"
 	) > $OBJ/sshd_proxy
@@ -83,7 +91,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 
 	# Missing authorized_principals
 	verbose "$tid: ${_prefix} missing authorized_principals"
-	rm -f $OBJ/authorized_principals_$USER
+	rm -f $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -92,7 +100,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 
 	# Empty authorized_principals
 	verbose "$tid: ${_prefix} empty authorized_principals"
-	echo > $OBJ/authorized_principals_$USER
+	echo > $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -101,7 +109,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 
 	# Wrong authorized_principals
 	verbose "$tid: ${_prefix} wrong authorized_principals"
-	echo gregorsamsa > $OBJ/authorized_principals_$USER
+	echo gregorsamsa > $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -110,7 +118,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 
 	# Correct authorized_principals
 	verbose "$tid: ${_prefix} correct authorized_principals"
-	echo mekmitasdigoat > $OBJ/authorized_principals_$USER
+	echo mekmitasdigoat > $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -ne 0 ]; then
@@ -119,7 +127,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 
 	# authorized_principals with bad key option
 	verbose "$tid: ${_prefix} authorized_principals bad key opt"
-	echo 'blah mekmitasdigoat' > $OBJ/authorized_principals_$USER
+	echo 'blah mekmitasdigoat' > $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -129,7 +137,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	# authorized_principals with command=false
 	verbose "$tid: ${_prefix} authorized_principals command=false"
 	echo 'command="false" mekmitasdigoat' > \
-	    $OBJ/authorized_principals_$USER
+	    $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -140,7 +148,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	# authorized_principals with command=true
 	verbose "$tid: ${_prefix} authorized_principals command=true"
 	echo 'command="true" mekmitasdigoat' > \
-	    $OBJ/authorized_principals_$USER
+	    $OBJ/authorized_principals_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost false >/dev/null 2>&1
 	if [ $? -ne 0 ]; then
@@ -148,7 +156,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	fi
 
 	# Setup for principals= key option
-	rm -f $OBJ/authorized_principals_$USER
+	rm -f $OBJ/authorized_principals_${USER}_X
 	(
 		cat $OBJ/sshd_proxy_bak
 		echo "PubkeyAcceptedAlgorithms ${t}"
@@ -163,7 +171,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	(
 		printf 'cert-authority,principals="gregorsamsa" '
 		cat $OBJ/user_ca_key.pub
-	) > $OBJ/authorized_keys_$USER
+	) > $OBJ/authorized_keys_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
@@ -175,7 +183,7 @@ for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	(
 		printf 'cert-authority,principals="mekmitasdigoat" '
 		cat $OBJ/user_ca_key.pub
-	) > $OBJ/authorized_keys_$USER
+	) > $OBJ/authorized_keys_${USER}_X
 	${SSH} -i $OBJ/cert_user_key_${ktype} \
 	    -F $OBJ/ssh_proxy somehost true >/dev/null 2>&1
 	if [ $? -ne 0 ]; then
@@ -185,14 +193,17 @@ done
 
 basic_tests() {
 	auth=$1
+	rm -f $OBJ/authorized_keys_${USER}*
+	touch $OBJ/authorized_keys_${USER}_A
+	touch $OBJ/authorized_keys_${USER}_Z
 	if test "x$auth" = "xauthorized_keys" ; then
 		# Add CA to authorized_keys
 		(
 			printf 'cert-authority '
 			cat $OBJ/user_ca_key.pub
-		) > $OBJ/authorized_keys_$USER
+		) > $OBJ/authorized_keys_${USER}_X
 	else
-		echo > $OBJ/authorized_keys_$USER
+		echo > $OBJ/authorized_keys_${USER}_X
 		extra_sshd="TrustedUserCAKeys $OBJ/user_ca_key.pub"
 	fi
 
@@ -300,9 +311,9 @@ test_one() {
 				(
 					printf "cert-authority${auth_opt} "
 					cat $OBJ/user_ca_key.pub
-				) > $OBJ/authorized_keys_$USER
+				) > $OBJ/authorized_keys_${USER}_X
 			else
-				echo > $OBJ/authorized_keys_$USER
+				echo > $OBJ/authorized_keys_${USER}_X
 				echo "TrustedUserCAKeys $OBJ/user_ca_key.pub" \
 				    >> $OBJ/sshd_proxy
 				echo "PubkeyAcceptedAlgorithms ${t}*" \
@@ -351,15 +362,15 @@ test_one "empty principals"	failure "" TrustedUserCAKeys
 # should always be refused.
 
 # AuthorizedPrincipalsFile
-rm -f $OBJ/authorized_keys_$USER
-echo mekmitasdigoat > $OBJ/authorized_principals_$USER
+rm -f $OBJ/authorized_keys_${USER}_X
+echo mekmitasdigoat > $OBJ/authorized_principals_${USER}_X
 test_one "AuthorizedPrincipalsFile principals" success "-n mekmitasdigoat" \
-    TrustedUserCAKeys "AuthorizedPrincipalsFile $OBJ/authorized_principals_%u"
+    TrustedUserCAKeys "AuthorizedPrincipalsFile $OBJ/authorized_principals_%u_*"
 test_one "AuthorizedPrincipalsFile no principals" failure "" \
-    TrustedUserCAKeys "AuthorizedPrincipalsFile $OBJ/authorized_principals_%u"
+    TrustedUserCAKeys "AuthorizedPrincipalsFile $OBJ/authorized_principals_%u_*"
 
 # principals= key option
-rm -f $OBJ/authorized_principals_$USER
+rm -f $OBJ/authorized_principals_${USER}_X
 test_one "principals key option principals" success "-n mekmitasdigoat" \
     authorized_keys ',principals="mekmitasdigoat"'
 test_one "principals key option no principals" failure "" \
@@ -396,6 +407,6 @@ for ktype in $PLAIN_TYPES ; do
 	fi
 done
 
-rm -f $OBJ/authorized_keys_$USER $OBJ/user_ca_key* $OBJ/cert_user_key*
-rm -f $OBJ/authorized_principals_$USER
+rm -f $OBJ/authorized_keys_${USER}* $OBJ/user_ca_key* $OBJ/cert_user_key*
+rm -f $OBJ/authorized_principals*
 

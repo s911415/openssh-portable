@@ -1767,3 +1767,11 @@
 #define HAVE_EVP_PKEY_GET0_RSA 1
 #define HAVE_EVP_MD_CTX_NEW 1
 #define HAVE_EVP_MD_CTX_FREE 1
+
+/* Definition to enable sntrup761-x25519 */
+#define USE_SNTRUP761X25519 1
+
+/* Definitions to enable mlkem768-x25519 */
+#define USE_MLKEM768X25519 1
+#define HAVE_DECL_HTOLE64 0
+#define HAVE_DECL_LE64TOH 0

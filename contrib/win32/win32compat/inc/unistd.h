@@ -49,6 +49,9 @@ int w32_dup2(int oldfd, int newfd);
 unsigned int w32_alarm(unsigned int seconds);
 #define alarm w32_alarm
 
+int w32_setitimer(int which, const struct itimerval* new_value, struct itimerval* old_value);
+#define setitimer w32_setitimer
+
 long w32_lseek(int fd, unsigned __int64 offset, int origin);
 #define lseek w32_lseek
 
