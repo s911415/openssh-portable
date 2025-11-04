@@ -53,6 +53,7 @@
 #include <sys\utime.h>
 #include "misc_internal.h"
 #include "debug.h"
+#include "userenv.h"
 
 /* internal table that stores the fd to w32_io mapping*/
 struct w32fd_table {
@@ -1054,6 +1055,45 @@ int fork()
 }
 char * build_commandline_string(const char* cmd, char *const argv[], BOOLEAN prepend_module_path);
 
+wchar_t*
+get_username_from_token(HANDLE as_user)
+{
+	wchar_t* user_name = NULL;
+	SID_NAME_USE usage;
+	DWORD count = 0;
+	GetTokenInformation(as_user, TokenUser, NULL, 0, &count);
+	if (count) {
+		void* buffer = malloc(count);
+		if (buffer) {
+			if (GetTokenInformation(as_user, TokenUser, buffer, count, &count)) {
+				TOKEN_USER* owner = (TOKEN_USER*)buffer;
+				DWORD name_length = 0;
+				DWORD domain_length = 0;
+				LookupAccountSidW(NULL, owner->User.Sid, NULL, &name_length, NULL, &domain_length, &usage); /* Figure out the length of the name. */
+				if (name_length) {
+					wchar_t* domain_name = malloc(domain_length * sizeof(wchar_t));
+					if (domain_name) {
+						user_name = malloc(name_length * sizeof(wchar_t));
+						if (user_name) {
+							memset(user_name, 0, name_length * sizeof(wchar_t));
+							memset(domain_name, 0, domain_length * sizeof(wchar_t));
+							BOOL success = LookupAccountSidW(NULL, owner->User.Sid, user_name, &name_length, domain_name, &domain_length, &usage);
+							if (!success) /* Silently return an empty string if unsuccessful. */
+							{
+								free(user_name);
+								user_name = NULL;
+							}
+						}
+						free(domain_name);
+					}
+				}
+			}
+			free(buffer);
+		}
+	}
+	return user_name;
+}
+
 /*
 * spawn a child process
 * - specified by cmd with agruments argv
@@ -1105,7 +1145,21 @@ spawn_child_internal(const char* cmd, char *const argv[], HANDLE in, HANDLE out,
 	do {
 		if (as_user) {
 			debug3("spawning %ls as user", t);
-			b = CreateProcessAsUserW(as_user, NULL, t, NULL, NULL, TRUE, flags, NULL, NULL, &si, &pi);
+			LPVOID lpEnvironment = NULL;
+			wchar_t* as_user_name = get_username_from_token(as_user);
+			if (as_user_name) {
+				if (wcsncmp(L"sshd", as_user_name, wcslen(L"sshd")) != 0) { /* Ignore any names that begin with the service name `sshd`. */
+					b = CreateEnvironmentBlock(&lpEnvironment, as_user, TRUE); /* Load a user environment block inheriting the current context, thereby passing session state. */
+				}
+				free(as_user_name);
+			}
+			if (lpEnvironment) { /* Pass the user environment block to the new process. */
+				b = CreateProcessAsUserW(as_user, NULL, t, NULL, NULL, TRUE, flags | CREATE_UNICODE_ENVIRONMENT, lpEnvironment, NULL, &si, &pi);
+				DestroyEnvironmentBlock(lpEnvironment);
+			}
+			else { /* Pass the current context's environment block to the new process. */
+				b = CreateProcessAsUserW(as_user, NULL, t, NULL, NULL, TRUE, flags, NULL, NULL, &si, &pi);
+			}
 		}
 		else {
 			debug3("spawning %ls as subprocess", t);
