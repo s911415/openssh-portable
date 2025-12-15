@@ -10,6 +10,9 @@ pr:
     include:
     - latestw_all
 
+variables:
+  vcpkgCacheDir: '$(Build.SourcesDirectory)/binary-cache'
+
 stages:
 - stage: BuildDependencies
   displayName: Build Dependencies
@@ -17,26 +20,24 @@ stages:
   - job: InstallDeps_x64
     displayName: Install vcpkg Dependencies (x64)
     pool:
-      name: PS-PowerShell-x64
-      demands:
-      - ImageOverride -equals PSMMS2022-OpenSSH-Secure
+      vmImage: windows-latest
     steps:
     - template: ./templates/install-vcpkg-dependencies.yml
       parameters:
         triplet: x64-custom
         artifactSuffix: x64
+        vcpkgCacheDir: '$(vcpkgCacheDir)'
 
   - job: InstallDeps_x86
     displayName: Install vcpkg Dependencies (x86)
     pool:
-      name: PS-PowerShell-x64
-      demands:
-      - ImageOverride -equals PSMMS2022-OpenSSH-Secure
+      vmImage: windows-latest
     steps:
     - template: ./templates/install-vcpkg-dependencies.yml
       parameters:
         triplet: x86-custom
         artifactSuffix: x86
+        vcpkgCacheDir: '$(vcpkgCacheDir)'
 
 - stage: Build
   displayName: Build Win32-OpenSSH
@@ -45,9 +46,7 @@ stages:
   - job: BuildPkg_x64
     displayName: Build Package (x64)
     pool:
-      name: PS-PowerShell-x64
-      demands:
-      - ImageOverride -equals PSMMS2022-OpenSSH-Secure
+      vmImage: windows-latest
     steps:
     - template: ./templates/build-win32-openssh-job.yml
       parameters:
@@ -56,13 +55,12 @@ stages:
         artifactSuffix: x64
         dependenciesArtifactName: vcpkg-dependencies-x64
         includeConfig: true
+        vcpkgCacheDir: '$(vcpkgCacheDir)'
 
   - job: BuildPkg_x86
     displayName: Build Package (x86)
     pool:
-      name: PS-PowerShell-x64
-      demands:
-      - ImageOverride -equals PSMMS2022-OpenSSH-Secure
+      vmImage: windows-latest
     steps:
     - template: ./templates/build-win32-openssh-job.yml
       parameters:
@@ -70,6 +68,7 @@ stages:
         buildOutputDir: Win32
         artifactSuffix: x86
         dependenciesArtifactName: vcpkg-dependencies-x86
+        vcpkgCacheDir: '$(vcpkgCacheDir)'
 
 - stage: Test
   displayName: Test Win32-OpenSSH
