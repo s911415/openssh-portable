@@ -330,6 +330,9 @@ match_principals_file(struct passwd *pw, char *file,
 		*authoptsp = NULL;
 
 	temporarily_use_uid(pw);
+#ifdef WINDOWS
+	convertToForwardslash(file);
+#endif // WINDOWS
 	r = glob(file, 0, NULL, &gl);
 	restore_uid();
 	if (r != 0) {
